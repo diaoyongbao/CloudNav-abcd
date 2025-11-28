@@ -882,7 +882,7 @@ function App() {
               }`}
             >
               <div className="p-1"><Icon name="LayoutGrid" size={18} /></div>
-              <span>全部链接</span>
+              <span>置顶网站</span>
             </button>
             
             <div className="flex items-center justify-between pt-4 pb-2 px-4">

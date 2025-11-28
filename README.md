@@ -1,3 +1,57 @@
+# CloudNav-abcd（修改版）
+**本项目基于在大佬 https://github.com/sese972010/CloudNav- 的项目上，根据我的个性化需求做了一些修改，设置密码后需要输密访问，适合个人使用！**
+
+---
+
+## 修改内容
+#### 一、编辑链接增加自动获取图标功能
+填写网址后，点击`自动获取图标`按钮
+<details>
+<summary><strong>👉 点击查看截图</strong></summary>
+
+![100](./doc/100.png)
+
+</details>
+
+#### 二、站点卡片支持拖拽排序
+<details>
+<summary><strong>👉 点击查看截图</strong></summary>
+
+![101](./doc/101.png)
+
+![102](./doc/102.png)
+
+</details>
+
+#### 三、导入导出增加 JSON 文件
+<details>
+<summary><strong>👉 点击查看截图</strong></summary>
+
+![103](./doc/103.png)
+
+![104](./doc/104.png)
+
+</details>
+
+#### 四、设置页面增加修改网站名称
+<details>
+<summary><strong>👉 点击查看截图</strong></summary>
+
+![105](./doc/105.png)
+
+</details>
+
+#### 五、分类站点增加自定义图标功能
+<details>
+<summary><strong>👉 点击查看截图</strong></summary>
+
+![106](./doc/106.png)
+
+![107](./doc/107png)
+
+</details>
+
+---
 
 # CloudNav (云航) - 智能私有导航站
 
@@ -12,18 +66,19 @@
 <br/>
 
 <!-- 请将下方的链接替换为您实际部署后的 Cloudflare Pages 域名 -->
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-View%20Online-7c3aed?style=for-the-badge&logo=sparkles)](https://demo.newai.netlib.re)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-View%20Online-7c3aed?style=for-the-badge&logo=sparkles)](https://cloudnav.yy77.eu.org)
 
 <br/>
 
 **一个现代化、基于 AI 辅助的全栈个人导航站。**
 **无需购买服务器，依托 Cloudflare 免费托管，实现多端数据实时同步。**
 
-[在线演示](https://demo.newai.netlib.re) • [功能特性](#-核心功能) • [项目展示](#-项目展示) • [部署教程](#-部署教程-免费) • [使用指南](#-使用指南)
+[在线演示](https://cloudnav.yy77.eu.org) • [功能特性](#-核心功能) • [项目展示](#-项目展示) • [部署教程](#-部署教程-免费) • [使用指南](#-使用指南)
 
 </div>
 
 ---
+
 <details>
 <summary><strong>👉 点击查看项目功能介绍</strong></summary>
 
