@@ -34,6 +34,8 @@ import BackupModal from './components/BackupModal';
 import CategoryAuthModal from './components/CategoryAuthModal';
 import ImportModal from './components/ImportModal';
 import SettingsModal from './components/SettingsModal';
+import ContextMenu from './components/ContextMenu';
+import QRCodeModal from './components/QRCodeModal';
 
 // --- 配置项 ---
 // 项目核心仓库地址
@@ -108,6 +110,35 @@ function App() {
   // Batch Edit State
   const [isBatchEditMode, setIsBatchEditMode] = useState(false); // 是否处于批量编辑模式
   const [selectedLinks, setSelectedLinks] = useState<Set<string>>(new Set()); // 选中的链接ID集合
+  
+  // View Mode State
+  const [viewMode, setViewMode] = useState<'compact' | 'detailed'>(() => {
+    // 从本地存储加载用户偏好设置
+    const savedViewMode = localStorage.getItem('cloudnav_view_mode');
+    return savedViewMode === 'detailed' ? 'detailed' : 'compact';
+  }); // 视图模式：compact（简约版）或 detailed（详情版）
+  
+  // Context Menu State
+  const [contextMenu, setContextMenu] = useState<{
+    isOpen: boolean;
+    position: { x: number; y: number };
+    link: LinkItem | null;
+  }>({
+    isOpen: false,
+    position: { x: 0, y: 0 },
+    link: null
+  });
+  
+  // QR Code Modal State
+  const [qrCodeModal, setQrCodeModal] = useState<{
+    isOpen: boolean;
+    url: string;
+    title: string;
+  }>({
+    isOpen: false,
+    url: '',
+    title: ''
+  });
   
   // --- Helpers & Sync Logic ---
 
@@ -203,6 +234,99 @@ function App() {
       if (authToken) {
           syncToCloud(newLinks, newCategories, authToken);
       }
+  };
+
+  // --- Context Menu Functions ---
+  const handleContextMenu = (event: React.MouseEvent, link: LinkItem) => {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    // 在批量编辑模式下禁用右键菜单
+    if (isBatchEditMode) return;
+    
+    setContextMenu({
+      isOpen: true,
+      position: { x: event.clientX, y: event.clientY },
+      link: link
+    });
+  };
+
+  const closeContextMenu = () => {
+    setContextMenu({
+      isOpen: false,
+      position: { x: 0, y: 0 },
+      link: null
+    });
+  };
+
+  const copyLinkToClipboard = () => {
+    if (!contextMenu.link) return;
+    
+    navigator.clipboard.writeText(contextMenu.link.url)
+      .then(() => {
+        // 可以添加一个短暂的提示
+        console.log('链接已复制到剪贴板');
+      })
+      .catch(err => {
+        console.error('复制链接失败:', err);
+      });
+    
+    closeContextMenu();
+  };
+
+  const showQRCode = () => {
+    if (!contextMenu.link) return;
+    
+    setQrCodeModal({
+      isOpen: true,
+      url: contextMenu.link.url,
+      title: contextMenu.link.title
+    });
+    
+    closeContextMenu();
+  };
+
+  const editLinkFromContextMenu = () => {
+    if (!contextMenu.link) return;
+    
+    setEditingLink(contextMenu.link);
+    setIsModalOpen(true);
+    closeContextMenu();
+  };
+
+  const deleteLinkFromContextMenu = () => {
+    if (!contextMenu.link) return;
+    
+    if (window.confirm(`确定要删除"${contextMenu.link.title}"吗？`)) {
+      const newLinks = links.filter(link => link.id !== contextMenu.link!.id);
+      updateData(newLinks, categories);
+    }
+    
+    closeContextMenu();
+  };
+
+  const togglePinFromContextMenu = () => {
+    if (!contextMenu.link) return;
+    
+    const linkToToggle = links.find(l => l.id === contextMenu.link!.id);
+    if (!linkToToggle) return;
+    
+    // 如果是设置为置顶，则设置pinnedOrder为当前置顶链接数量
+    // 如果是取消置顶，则清除pinnedOrder
+    const updated = links.map(l => {
+      if (l.id === contextMenu.link!.id) {
+        const isPinned = !l.pinned;
+        return { 
+          ...l, 
+          pinned: isPinned,
+          pinnedOrder: isPinned ? links.filter(link => link.pinned).length : undefined
+        };
+      }
+      return l;
+    });
+    
+    updateData(updated, categories);
+    closeContextMenu();
   };
 
   // 加载链接图标缓存
@@ -417,6 +541,12 @@ function App() {
       document.documentElement.classList.remove('dark');
       localStorage.setItem('theme', 'light');
     }
+  };
+
+  // 视图模式切换处理函数
+  const handleViewModeChange = (mode: 'compact' | 'detailed') => {
+    setViewMode(mode);
+    localStorage.setItem('cloudnav_view_mode', mode);
   };
 
   // --- Batch Edit Functions ---
@@ -981,6 +1111,9 @@ function App() {
       isDragging,
     } = useSortable({ id: link.id });
     
+    // 根据视图模式决定卡片样式
+    const isDetailedView = viewMode === 'detailed';
+    
     const style = {
       transform: CSS.Transform.toString(transform),
       transition: isDragging ? 'none' : transition,
@@ -992,27 +1125,47 @@ function App() {
       <div
         ref={setNodeRef}
         style={style}
-        className={`group relative flex items-center gap-3 p-3 rounded-xl border shadow-sm transition-all duration-200 cursor-grab active:cursor-grabbing min-w-0 max-w-full overflow-hidden ${
+        className={`group relative transition-all duration-200 cursor-grab active:cursor-grabbing min-w-0 max-w-full overflow-hidden hover:shadow-lg hover:shadow-blue-100/50 dark:hover:shadow-blue-900/20 ${
           isSortingMode || isSortingPinned
             ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800' 
-            : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700/50'
-        } ${isDragging ? 'shadow-2xl scale-105' : ''}`}
+            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+        } ${isDragging ? 'shadow-2xl scale-105' : ''} ${
+          isDetailedView 
+            ? 'flex flex-col rounded-2xl border shadow-sm p-4 min-h-[100px] hover:border-blue-400 dark:hover:border-blue-500' 
+            : 'flex items-center rounded-xl border shadow-sm hover:border-blue-300 dark:hover:border-blue-600'
+        }`}
         {...attributes}
         {...listeners}
       >
         {/* 链接内容 - 移除a标签，改为div防止点击跳转 */}
-        <div className="flex items-center gap-3 flex-1 min-w-0 overflow-hidden">
-          {/* Compact Icon */}
-          <div className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-700 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold uppercase shrink-0">
-              {link.icon ? <img src={link.icon} alt="" className="w-5 h-5"/> : link.title.charAt(0)}
+        <div className={`flex flex-1 min-w-0 overflow-hidden ${
+          isDetailedView ? 'flex-col' : 'items-center gap-3'
+        }`}>
+          {/* 第一行：图标和标题水平排列 */}
+          <div className={`flex items-center gap-3 mb-2 ${
+            isDetailedView ? '' : 'w-full'
+          }`}>
+            {/* Icon */}
+            <div className={`text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold uppercase shrink-0 ${
+              isDetailedView ? 'w-8 h-8 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-700 dark:to-slate-800' : 'w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-700'
+            }`}>
+                {link.icon ? <img src={link.icon} alt="" className="w-5 h-5"/> : link.title.charAt(0)}
+            </div>
+            
+            {/* 标题 */}
+            <h3 className={`text-slate-900 dark:text-slate-100 truncate overflow-hidden text-ellipsis ${
+              isDetailedView ? 'text-base' : 'text-sm font-medium text-slate-800 dark:text-slate-200'
+            }`} title={link.title}>
+                {link.title}
+            </h3>
           </div>
           
-          {/* Text Content - 移除描述文字 */}
-          <div className="flex-1 min-w-0 overflow-hidden">
-              <h3 className="font-medium text-sm text-slate-800 dark:text-slate-200 truncate whitespace-nowrap overflow-hidden text-ellipsis" title={link.title}>
-                  {link.title}
-              </h3>
-          </div>
+          {/* 第二行：描述文字 */}
+             {isDetailedView && link.description && (
+               <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed line-clamp-2">
+                 {link.description}
+               </p>
+             )}
         </div>
       </div>
     );
@@ -1021,67 +1174,105 @@ function App() {
   const renderLinkCard = (link: LinkItem) => {
     const isSelected = selectedLinks.has(link.id);
     
+    // 根据视图模式决定卡片样式
+    const isDetailedView = viewMode === 'detailed';
+    
     return (
       <div
         key={link.id}
-        className={`group relative flex items-center gap-3 p-3 rounded-xl border shadow-sm transition-all duration-200 ${
+        className={`group relative transition-all duration-200 hover:shadow-lg hover:shadow-blue-100/50 dark:hover:shadow-blue-900/20 ${
           isSelected 
             ? 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800' 
-            : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700/50'
-        } ${isBatchEditMode ? 'cursor-pointer' : ''}`}
+            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+        } ${isBatchEditMode ? 'cursor-pointer' : ''} ${
+          isDetailedView 
+            ? 'flex flex-col rounded-2xl border shadow-sm p-4 min-h-[100px] hover:border-blue-400 dark:hover:border-blue-500' 
+            : 'flex items-center justify-between rounded-xl border shadow-sm p-3 hover:border-blue-300 dark:hover:border-blue-600'
+        }`}
         onClick={() => isBatchEditMode && toggleLinkSelection(link.id)}
+        onContextMenu={(e) => handleContextMenu(e, link)}
       >
         {/* 链接内容 - 在批量编辑模式下不使用a标签 */}
         {isBatchEditMode ? (
-          <div className="flex items-center gap-3 flex-1 min-w-0 overflow-hidden">
-            {/* Compact Icon */}
-            <div className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-700 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold uppercase shrink-0">
-                {link.icon ? <img src={link.icon} alt="" className="w-5 h-5"/> : link.title.charAt(0)}
+          <div className={`flex flex-1 min-w-0 overflow-hidden h-full ${
+            isDetailedView ? 'flex-col' : 'items-center'
+          }`}>
+            {/* 第一行：图标和标题水平排列 */}
+            <div className={`flex items-center gap-3 w-full`}>
+              {/* Icon */}
+              <div className={`text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold uppercase shrink-0 ${
+                isDetailedView ? 'w-8 h-8 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-700 dark:to-slate-800' : 'w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-700'
+              }`}>
+                  {link.icon ? <img src={link.icon} alt="" className="w-5 h-5"/> : link.title.charAt(0)}
+              </div>
+              
+              {/* 标题 */}
+              <h3 className={`text-slate-900 dark:text-slate-100 truncate overflow-hidden text-ellipsis ${
+                isDetailedView ? 'text-base' : 'text-sm font-medium text-slate-800 dark:text-slate-200'
+              }`} title={link.title}>
+                  {link.title}
+              </h3>
             </div>
             
-            {/* Text Content */}
-            <div className="flex-1 min-w-0 overflow-hidden">
-                <h3 className="font-medium text-sm text-slate-800 dark:text-slate-200 truncate whitespace-nowrap overflow-hidden text-ellipsis" title={link.title}>
-                    {link.title}
-                </h3>
-            </div>
+            {/* 第二行：描述文字 */}
+            {isDetailedView && link.description && (
+              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed line-clamp-2">
+                {link.description}
+              </p>
+            )}
           </div>
         ) : (
           <a
             href={link.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-3 flex-1 min-w-0 overflow-hidden"
-            title={link.description || link.url} // Native tooltip fallback
+            className={`flex flex-1 min-w-0 overflow-hidden h-full ${
+              isDetailedView ? 'flex-col' : 'items-center'
+            }`}
+            title={isDetailedView ? link.url : (link.description || link.url)} // 详情版视图只显示URL作为tooltip
           >
-            {/* Compact Icon */}
-            <div className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-700 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold uppercase shrink-0">
-                {link.icon ? <img src={link.icon} alt="" className="w-5 h-5"/> : link.title.charAt(0)}
-            </div>
-            
-            {/* Text Content */}
-            <div className="flex-1 min-w-0 overflow-hidden">
-                <h3 className="font-medium text-sm text-slate-800 dark:text-slate-200 truncate whitespace-nowrap overflow-hidden text-ellipsis group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors" title={link.title}>
+            {/* 第一行：图标和标题水平排列 */}
+            <div className={`flex items-center gap-3 w-full`}>
+              {/* Icon */}
+              <div className={`text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold uppercase shrink-0 ${
+                isDetailedView ? 'w-8 h-8 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-700 dark:to-slate-800' : 'w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-700'
+              }`}>
+                  {link.icon ? <img src={link.icon} alt="" className="w-5 h-5"/> : link.title.charAt(0)}
+              </div>
+              
+              {/* 标题 */}
+                <h3 className={`text-slate-800 dark:text-slate-200 truncate whitespace-nowrap overflow-hidden text-ellipsis group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors ${
+                  isDetailedView ? 'text-base' : 'text-sm font-medium'
+                }`} title={link.title}>
                     {link.title}
                 </h3>
-                {link.description && (
-                  <div className="tooltip-custom absolute left-0 -top-8 w-max max-w-[200px] bg-black text-white text-xs p-2 rounded opacity-0 invisible group-hover:visible group-hover:opacity-100 transition-all z-20 pointer-events-none truncate">
-                    {link.description}
-                  </div>
-                )}
             </div>
+            
+            {/* 第二行：描述文字 */}
+              {isDetailedView && link.description && (
+                <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed line-clamp-2">
+                  {link.description}
+                </p>
+              )}
+            {!isDetailedView && link.description && (
+              <div className="tooltip-custom absolute left-0 -top-8 w-max max-w-[200px] bg-black text-white text-xs p-2 rounded opacity-0 invisible group-hover:visible group-hover:opacity-100 transition-all z-20 pointer-events-none truncate">
+                {link.description}
+              </div>
+            )}
           </a>
         )}
 
-        {/* Hover Actions (Absolute Right or Flex) - 在批量编辑模式下隐藏 */}
+        {/* Hover Actions (Absolute Right) - 在批量编辑模式下隐藏 */}
         {!isBatchEditMode && (
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity absolute right-2 bg-white/90 dark:bg-slate-800/90 pl-2">
+          <div className={`flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-md p-1 absolute ${
+            isDetailedView ? 'top-3 right-3' : 'top-1/2 -translate-y-1/2 right-2'
+          }`}>
               <button 
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); setEditingLink(link); setIsModalOpen(true); }}
                   className="p-1 text-slate-400 hover:text-blue-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md"
                   title="编辑"
               >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                       <path d="M12 15.5A3.5 3.5 0 0 1 8.5 12A3.5 3.5 0 0 1 12 8.5a3.5 3.5 0 0 1 3.5 3.5a3.5 3.5 0 0 1-3.5 3.5m7.43-2.53c.04-.32.07-.64.07-.97c0-.33-.03-.65-.07-.97l2.11-1.63c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.39-1.06-.73-1.69-.98l-.37-2.65A.506.506 0 0 0 14 2h-4c-.25 0-.46.18-.5.42l-.37 2.65c-.63.25-1.17.59-1.69.98l-2.49-1c-.22-.08-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64L4.57 11c-.04.32-.07.64-.07.97c0 .33.03.65.07.97l-2.11 1.63c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.39 1.06.73 1.69.98l.37 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.37-2.65c.63-.25 1.17-.59 1.69-.98l2.49 1c.22.08.49 0 .61-.22l2-3.46c.13-.22.07-.49-.12-.64l-2.11-1.63Z" fill="currentColor"/>
                   </svg>
               </button>
@@ -1090,7 +1281,6 @@ function App() {
       </div>
     );
   };
-
 
   return (
     <div className="flex h-screen overflow-hidden text-slate-900 dark:text-slate-50">
@@ -1279,7 +1469,7 @@ function App() {
                  title="Fork this project on GitHub"
                >
                  <GitFork size={14} />
-                 <span>Fork 项目 v1.3</span>
+                 <span>Fork 项目 v1.4</span>
                </a>
             </div>
         </div>
@@ -1308,6 +1498,32 @@ function App() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* 视图切换控制器 */}
+            <div className="flex items-center bg-slate-100 dark:bg-slate-700 rounded-full p-1">
+              <button
+                onClick={() => handleViewModeChange('compact')}
+                className={`px-3 py-1 text-xs font-medium rounded-full transition-all ${
+                  viewMode === 'compact'
+                    ? 'bg-white dark:bg-slate-600 text-blue-600 dark:text-blue-400 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100'
+                }`}
+                title="简约版视图"
+              >
+                简约
+              </button>
+              <button
+                onClick={() => handleViewModeChange('detailed')}
+                className={`px-3 py-1 text-xs font-medium rounded-full transition-all ${
+                  viewMode === 'detailed'
+                    ? 'bg-white dark:bg-slate-600 text-blue-600 dark:text-blue-400 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100'
+                }`}
+                title="详情版视图"
+              >
+                详情
+              </button>
+            </div>
+
             <button onClick={toggleTheme} className="p-2 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">
               {darkMode ? <Sun size={18} /> : <Moon size={18} />}
             </button>
@@ -1386,7 +1602,11 @@ function App() {
                                 items={pinnedLinks.map(link => link.id)}
                                 strategy={rectSortingStrategy}
                             >
-                                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+                                <div className={`grid gap-3 ${
+                                  viewMode === 'detailed' 
+                                    ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6' 
+                                    : 'grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8'
+                                }`}>
                                     {pinnedLinks.map(link => (
                                         <SortableLinkCard key={link.id} link={link} />
                                     ))}
@@ -1394,7 +1614,11 @@ function App() {
                             </SortableContext>
                         </DndContext>
                     ) : (
-                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+                        <div className={`grid gap-3 ${
+                          viewMode === 'detailed' 
+                            ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6' 
+                            : 'grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8'
+                        }`}>
                             {pinnedLinks.map(link => renderLinkCard(link))}
                         </div>
                     )}
@@ -1546,7 +1770,11 @@ function App() {
                                 items={displayedLinks.map(link => link.id)}
                                 strategy={rectSortingStrategy}
                             >
-                                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+                                <div className={`grid gap-3 ${
+                                  viewMode === 'detailed' 
+                                    ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6' 
+                                    : 'grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8'
+                                }`}>
                                     {displayedLinks.map(link => (
                                         <SortableLinkCard key={link.id} link={link} />
                                     ))}
@@ -1554,7 +1782,11 @@ function App() {
                             </SortableContext>
                         </DndContext>
                     ) : (
-                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+                        <div className={`grid gap-3 ${
+                          viewMode === 'detailed' 
+                            ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6' 
+                            : 'grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8'
+                        }`}>
                             {displayedLinks.map(link => renderLinkCard(link))}
                         </div>
                     )
@@ -1573,6 +1805,26 @@ function App() {
             initialData={editingLink || (prefillLink as LinkItem)}
             aiConfig={aiConfig}
             defaultCategoryId={selectedCategory !== 'all' ? selectedCategory : undefined}
+          />
+
+          {/* 右键菜单 */}
+          <ContextMenu
+            isOpen={contextMenu.isOpen}
+            position={contextMenu.position}
+            onClose={closeContextMenu}
+            onCopyLink={copyLinkToClipboard}
+            onShowQRCode={showQRCode}
+            onEditLink={editLinkFromContextMenu}
+            onDeleteLink={deleteLinkFromContextMenu}
+            onTogglePin={togglePinFromContextMenu}
+          />
+
+          {/* 二维码模态框 */}
+          <QRCodeModal
+            isOpen={qrCodeModal.isOpen}
+            url={qrCodeModal.url || ''}
+            title={qrCodeModal.title || ''}
+            onClose={() => setQrCodeModal({ isOpen: false, url: '', title: '' })}
           />
         </>
       )}
